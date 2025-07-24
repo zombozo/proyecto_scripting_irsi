@@ -25,25 +25,29 @@ Write-Log "Log file path:   $logPath"
 function Leer-CSV {
     Write-Log "Iniciando tarea Leer-CSV"
 
-    do {
-        Write-Log "Cargando datos de '$path' (delimitador='$delimiter')"
+    while ($true) {
+        Write-Log "Cargando datos de '$path'"
         $datos      = Import-Csv -Path $path -Delimiter $delimiter
         $pendientes = $datos | Where-Object { $_.estado -ne "creado" }
 
         Write-Log "Registros pendientes: $($pendientes.Count)"
-        if ($pendientes.Count -eq 0) {
-            Write-Log "No hay registros pendientes. Ejecutando Python: $pythonScript"
-            try {
-                & python $pythonScript
-                Write-Log "Script Python ejecutado correctamente"
-            }
-            catch {
-                Write-Log "Error al ejecutar Python: $_" "ERROR"
-                return
-            }
-            Start-Sleep -Seconds 5
+        if ($pendientes.Count -gt 0) {
+            break
         }
-    } while ($pendientes.Count -eq 0)
+
+        Write-Log "No hay registros pendientes. Ejecutando Python: $pythonScript"
+        try {
+            & python $pythonScript
+            Write-Log "Script Python ejecutado correctamente"
+        }
+        catch {
+            Write-Log "Error al ejecutar Python: $_" "ERROR"
+            return
+        }
+
+        Write-Log "Esperando antes de recargar..."
+        Start-Sleep -Seconds 5
+    }
 
     foreach ($fila in $pendientes) {
         Write-Log "Procesando usuario: $($fila.usuario)"
@@ -59,7 +63,6 @@ function Leer-CSV {
     }
 
     Write-Log "Guardando cambios en '$path'"
-    # Usar UseQuotes AsNeeded para evitar comillas innecesarias (PS 7+)
     $datos |
       Export-Csv -Path $path `
                  -NoTypeInformation `
@@ -68,6 +71,7 @@ function Leer-CSV {
 
     Write-Log "Tarea Leer-CSV completada"
 }
+
 
 function Crear-Usuario {
     param (
