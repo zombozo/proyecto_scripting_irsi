@@ -1,0 +1,3 @@
+usuario,nombre_completo,correo,descripcion,password,privilegios,estado
+olivares7,Gerson Olivares,gerson.olivares543@gmail.com,usuario de renomber,Contraseña123!,Administradores,System.Object[]
+olivares8,Gerson Olivares1,gerson.olivares@proton.me,usuario agradable,Contraseña123!,Administradores,System.Object[]
