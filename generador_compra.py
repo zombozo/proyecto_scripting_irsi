@@ -11,7 +11,7 @@ class GeneradorCompras:
     
     def generar_compra(self):
         compras = []
-        for i in range(10):
+        for i in range(2):
             compra = {
                 "id": self.faker_es.uuid4() ,
                 "nombre_cliente": self.faker_es.name(),
