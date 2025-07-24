@@ -205,3 +205,20 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+
+
+
+# Ignorar archivos que comiencen con factura_ o .factura_
+factura_*
+.factura_*
+
+
+# Ignorar archivos PDF, TEX y AUX de facturas si están en alguna subcarpeta también
+**/factura_*.pdf
+**/factura_*.tex
+**/.factura_*
+
+# Ignorar todos los archivos dentro de esas carpetas
+reporte_facturas/*
