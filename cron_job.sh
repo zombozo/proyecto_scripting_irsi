@@ -12,7 +12,7 @@ bash "$DIR/generador_facturas.sh"
 # Configurar cron si no existe
 if ! crontab -l 2>/dev/null | grep -q "generador_facturas.sh"; then
     (crontab -l 2>/dev/null; echo "0 10 * * * cd $DIR && source venv/bin/activate && bash generador_facturas.sh && venv/bin/python3 enviador.py >> envio_log.txt 2>&1") | crontab -
-    echo "[✓] Cron registrado para ejecutarse diariamente a las 10 AM."
+    echo "Cron registrado para ejecutarse diariamente a las 10 AM."
 else
-    echo "[✓] Cron ya estaba registrado."
+    echo "Cron ya estaba registrado."
 fi
