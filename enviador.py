@@ -1,81 +1,159 @@
+#!/usr/bin/env python3
 import csv
 import smtplib
 import os
-from email.message import EmailMessage
 import re
+import time
+from email.message import EmailMessage
+from datetime import datetime
 
-# Configuración SMTP de Mailtrap
+# Configuración SMTP (ajusta según tu cuenta Mailtrap o servidor real)
 SMTP_SERVER = "sandbox.smtp.mailtrap.io"
 SMTP_PORT = 2525
-EMAIL_USER = "775e28187f3f55"
-EMAIL_PASS = "eaceeb46a5e3ef"
-FROM_EMAIL = "Facturación <facturacion@ejemplo.com>"
+SMTP_USER = "c359d6adf48dd2"
+SMTP_PASS = "89cd00df80c9bb"
+FROM_EMAIL = "Facturación <facturacion@empresa.com>"
+ADMIN_EMAIL = "admin@empresa.com"
 
-def es_email_valido(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+# Ruta del CSV que maneja las facturas
+REPORTE_CSV = "reporte_facturas/reporte_facturas.csv"
 
-def enviar_factura(destinatario, archivo_pdf):
-    mensaje = EmailMessage()
-    mensaje['Subject'] = "Tu factura en PDF"
-    mensaje['From'] = FROM_EMAIL
-    mensaje['To'] = destinatario
-    mensaje.set_content("Hola,\n\nAdjunto encontrarás tu factura en PDF.")
+def validar_email(email):
+    """Valida formato básico de email."""
+    return re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email)
 
-    with open(archivo_pdf, 'rb') as f:
-        mensaje.add_attachment(f.read(), maintype='application', subtype='pdf', filename=os.path.basename(archivo_pdf))
-
+def enviar_correo(destinatario, archivo_pdf):
+    """Envía correo con el PDF adjunto."""
     try:
+        msg = EmailMessage()
+        msg['Subject'] = f"Factura {os.path.basename(archivo_pdf)}"
+        msg['From'] = FROM_EMAIL
+        msg['To'] = destinatario
+        msg.set_content("Adjunto encontrará su factura correspondiente.")
+
+        with open(archivo_pdf, 'rb') as f:
+            msg.add_attachment(f.read(),
+                             maintype='application',
+                             subtype='pdf',
+                             filename=os.path.basename(archivo_pdf))
+
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(mensaje)
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
         return True
     except Exception as e:
-        print(f"[X] Error al enviar a {destinatario}: {e}")
+        print(f"Error enviando a {destinatario}: {e}")
         return False
 
-def enviar_facturas(csv_path):
-    registros = []
+def enviar_reporte_admin(exitosos, fallidos):
+    """Envía resumen diario al admin con log adjunto."""
+    log_diario_path = "logs/log_diario.log"
+    try:
+        with open(log_diario_path, 'r', encoding='utf-8') as f:
+            contenido = f.read()
 
-    with open(csv_path, newline='', encoding='utf-8') as csvfile:
-        lector = csv.DictReader(csvfile, delimiter=';')
+        msg = EmailMessage()
+        msg['Subject'] = f"Reporte Diario de Facturas - {datetime.now().strftime('%Y-%m-%d')}"
+        msg['From'] = FROM_EMAIL
+        msg['To'] = ADMIN_EMAIL
+        msg.set_content(f"""Resumen diario:
+
+Facturas enviadas exitosamente: {exitosos}
+Facturas con errores: {fallidos}
+
+Detalles completos en el archivo adjunto.""")
+
+        with open(log_diario_path, 'rb') as f:
+            msg.add_attachment(f.read(),
+                             maintype='text',
+                             subtype='plain',
+                             filename='log_diario.log')
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Error enviando reporte al admin: {e}")
+
+def procesar_envios():
+    """Lee el CSV, envía las facturas pendientes y actualiza estado."""
+    if not os.path.exists(REPORTE_CSV):
+        print(f"No existe el archivo {REPORTE_CSV}")
+        return
+
+    registros_actualizados = []
+    exitosos = 0
+    fallidos = 0
+    total_procesados = 0
+
+    # Crear carpeta logs si no existe
+    os.makedirs("logs", exist_ok=True)
+    log_diario_path = "logs/log_diario.log"
+
+    with open(REPORTE_CSV, newline='', encoding='utf-8') as f:
+        lector = csv.DictReader(f, delimiter=';')
+        campos = lector.fieldnames
+
         for fila in lector:
-            correo = fila['correo']
-            archivo_pdf = os.path.join("facturas", fila['nombre_pdf'])  # Aquí se concatena la carpeta facturas
-            estado = fila['estado']
+            total_procesados += 1
+            estado = fila.get('estado', '').strip().lower()
 
-            if estado.strip().lower() == "enviado":
-                registros.append(fila)
+            # Solo enviar las pendientes
+            if estado != "pendiente":
+                registros_actualizados.append(fila)
                 continue
 
-            if not es_email_valido(correo):
-                print(f"[X] Correo inválido: {correo}")
-                registros.append(fila)
+            correo = fila['correo']
+            archivo_pdf = fila['nombre_pdf']
+
+            # Validar email y existencia PDF
+            if not validar_email(correo):
+                print(f"[X] Email inválido: {correo}")
+                fila['estado'] = 'fallido'
+                fallidos += 1
+                registros_actualizados.append(fila)
                 continue
 
             if not os.path.exists(archivo_pdf):
                 print(f"[X] Archivo no encontrado: {archivo_pdf}")
-                registros.append(fila)
+                fila['estado'] = 'fallido'
+                fallidos += 1
+                registros_actualizados.append(fila)
                 continue
 
-            if enviar_factura(correo, archivo_pdf):
-                print(f"[✓] Correo enviado a {correo}")
-                fila['estado'] = 'enviado'
+            # Enviar correo
+            if enviar_correo(correo, archivo_pdf):
+                print(f"[✓] Enviado a {correo}")
+                fila['estado'] = 'exitoso'
+                exitosos += 1
             else:
-                print(f"[X] No se pudo enviar a {correo}")
+                print(f"[X] Falló envío a {correo}")
+                fila['estado'] = 'fallido'
+                fallidos += 1
 
-            registros.append(fila)
+            registros_actualizados.append(fila)
 
-    # Guardar el CSV actualizado con todas las columnas existentes
-    if registros:
-        campos = registros[0].keys()  # Para conservar todas las columnas
-    else:
-        campos = ['id','correo','nombre_pdf','estado','timestamp']
+            # Esperar 1 segundo para evitar límite de Mailtrap
+            time.sleep(1)
 
-    with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-        escritor = csv.DictWriter(csvfile, fieldnames=campos, delimiter=';')
+    # Sobrescribir CSV con estados actualizados
+    with open(REPORTE_CSV, 'w', newline='', encoding='utf-8') as f:
+        escritor = csv.DictWriter(f, fieldnames=campos, delimiter=';')
         escritor.writeheader()
-        escritor.writerows(registros)
+        escritor.writerows(registros_actualizados)
+
+    # Log diario
+    with open(log_diario_path, 'a', encoding='utf-8') as f:
+        f.write(f"\n=== Reporte de Envíos {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        f.write(f"Total procesados: {total_procesados}\n")
+        f.write(f"Envíos exitosos: {exitosos}\n")
+        f.write(f"Envíos fallidos: {fallidos}\n")
+        f.write("="*50 + "\n")
+
+    # Enviar reporte al admin
+    enviar_reporte_admin(exitosos, fallidos)
 
 if __name__ == "__main__":
-    enviar_facturas("reporte_facturas/reporte_facturas.csv")
+    procesar_envios()
